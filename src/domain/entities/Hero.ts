@@ -3,10 +3,9 @@ import { Stats } from '../value-objects/Stats';
 import { HeroId } from '../value-objects/HeroId';
 import { HeroClass, HeroClassType, BASE_STATS_BY_CLASS } from '../enums/HeroClass';
 import {
-  HeroNotFoundError,
   InvalidLevelUpError,
   InsufficientAttributePointsError,
-  MaxLevelReachedError,
+  InvalidHeroNameError,
 } from '../errors/HeroErrors';
 
 /**
@@ -141,7 +140,7 @@ export class Hero extends EventEmitter {
     }
 
     const classBaseStats = BASE_STATS_BY_CLASS[classType];
-    const baseStats = Stats.create(
+    const baseStats = Stats.createBase(
       classBaseStats.strength,
       classBaseStats.dexterity,
       classBaseStats.vitality,
@@ -153,7 +152,7 @@ export class Hero extends EventEmitter {
       name.trim(),
       classType,
       baseStats,
-      Stats.create(0, 0, 0, 0), // Sin puntos分配ados aún
+      Stats.zero(), // Sin puntos分配ados aún
       1, // Nivel 1
       0, // 0 XP
       0 // Sin puntos disponibles hasta primer level up
@@ -326,7 +325,7 @@ export class Hero extends EventEmitter {
     }
 
     // Aplicar分配ación (inmutabilidad: nuevo Stats)
-    this._allocatedStats = Stats.create(
+    this._allocatedStats = Stats.createAllocated(
       this._allocatedStats.strength + (allocation.strength || 0),
       this._allocatedStats.dexterity + (allocation.dexterity || 0),
       this._allocatedStats.vitality + (allocation.vitality || 0),

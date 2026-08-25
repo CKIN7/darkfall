@@ -1,6 +1,3 @@
-import { validate } from 'class-validator';
-import { Transform, Type } from 'class-transformer';
-
 /**
  * Value Object: Stats
  *
@@ -9,23 +6,19 @@ import { Transform, Type } from 'class-transformer';
  * y encapsulan reglas de negocio (validaciones, cálculos derivados).
  * Evita primitive obsession - no pasamos 4 números sueltos por todo el código.
  *
- * DECISIÓN: Inmutable (readonly), validación en constructor, factory methods.
+ * DECISIÓN: Inmutable (readonly), validación en factory methods.
+ * - Base stats (stats innatos): mínimo 1
+ * - Allocated stats (puntos distribuidos): mínimo 0
+ * - Total stats = base + allocated
  * ALTERNATIVAS DESCARTADAS:
  * - Interface/plano object: sin validación, mutables, lógica dispersa
  * - Class mutables con setters: rompe inmutabilidad, difícil de razonar
  * - Tuple/array [str, dex, vit, ene]: semántica perdida, índices mágicos
  */
 export class Stats {
-  @Transform(({ value }) => Math.max(1, Math.floor(value)))
   public readonly strength: number;
-
-  @Transform(({ value }) => Math.max(1, Math.floor(value)))
   public readonly dexterity: number;
-
-  @Transform(({ value }) => Math.max(1, Math.floor(value)))
   public readonly vitality: number;
-
-  @Transform(({ value }) => Math.max(1, Math.floor(value)))
   public readonly energy: number;
 
   private constructor(
@@ -34,43 +27,73 @@ export class Stats {
     vitality: number,
     energy: number
   ) {
-    this.strength = strength;
-    this.dexterity = dexterity;
-    this.vitality = vitality;
-    this.energy = energy;
+    // Permitir 0 para allocated stats, clamp solo para evitar negativos
+    this.strength = Math.max(0, Math.floor(strength));
+    this.dexterity = Math.max(0, Math.floor(dexterity));
+    this.vitality = Math.max(0, Math.floor(vitality));
+    this.energy = Math.max(0, Math.floor(energy));
   }
 
   /**
-   * Factory method - crea Stats con validación
-   * PATRÓN: Factory Method (dentro del Value Object)
-   * POR QUÉ: Centraliza validación, garantiza instancias válidas,
-   * permite valores por defecto consistentes.
+   * Factory para base stats (stats innatos del héroe/items) - mínimo 1
+   * PATRÓN: Factory Method
+   * POR QUÉ: Valida invariante de dominio: stats base nunca pueden ser 0
    */
-  static create(
+  static createBase(
     strength: number = 10,
     dexterity: number = 10,
     vitality: number = 10,
     energy: number = 10
   ): Stats {
-    const stats = new Stats(strength, dexterity, vitality, energy);
-    const errors = validate(stats);
-    if (errors.length > 0) {
-      throw new Error(`Invalid stats: ${errors.map(e => Object.values(e.constraints || {})).flat().join(', ')}`);
+    if (!Number.isFinite(strength) || !Number.isFinite(dexterity) ||
+        !Number.isFinite(vitality) || !Number.isFinite(energy)) {
+      throw new Error('Base stats must be finite numbers');
     }
-    return stats;
+    if (strength < 1 || dexterity < 1 || vitality < 1 || energy < 1) {
+      throw new Error('Base stats must be at least 1');
+    }
+    return new Stats(strength, dexterity, vitality, energy);
   }
 
   /**
-   * Stats base para nuevo héroe (nivel 1)
+   * Factory para allocated stats (puntos distribuidos al subir nivel) - mínimo 0
+   * PATRÓN: Factory Method
+   */
+  static createAllocated(
+    strength: number = 0,
+    dexterity: number = 0,
+    vitality: number = 0,
+    energy: number = 0
+  ): Stats {
+    if (!Number.isFinite(strength) || !Number.isFinite(dexterity) ||
+        !Number.isFinite(vitality) || !Number.isFinite(energy)) {
+      throw new Error('Allocated stats must be finite numbers');
+    }
+    if (strength < 0 || dexterity < 0 || vitality < 0 || energy < 0) {
+      throw new Error('Allocated stats cannot be negative');
+    }
+    return new Stats(strength, dexterity, vitality, energy);
+  }
+
+  /**
+   * Stats base para nuevo héroe (nivel 1) - alias para createBase(10,10,10,10)
    * PATRÓN: Factory Method (named constructor)
    */
   static base(): Stats {
-    return Stats.create(10, 10, 10, 10);
+    return Stats.createBase(10, 10, 10, 10);
+  }
+
+  /**
+   * Stats allocated en cero (inicio del juego)
+   */
+  static zero(): Stats {
+    return Stats.createAllocated(0, 0, 0, 0);
   }
 
   /**
    * Suma dos Stats (para bonificaciones de items, level up)
    * Inmutabilidad: retorna nueva instancia
+   * El resultado puede tener cualquier valor >= 0
    */
   add(other: Stats): Stats {
     return new Stats(
@@ -83,14 +106,14 @@ export class Stats {
 
   /**
    * Resta Stats (para remover equipamiento)
-   * No permite valores < 1
+   * No permite valores < 0
    */
   subtract(other: Stats): Stats {
-    return Stats.create(
-      Math.max(1, this.strength - other.strength),
-      Math.max(1, this.dexterity - other.dexterity),
-      Math.max(1, this.vitality - other.vitality),
-      Math.max(1, this.energy - other.energy)
+    return new Stats(
+      Math.max(0, this.strength - other.strength),
+      Math.max(0, this.dexterity - other.dexterity),
+      Math.max(0, this.vitality - other.vitality),
+      Math.max(0, this.energy - other.energy)
     );
   }
 

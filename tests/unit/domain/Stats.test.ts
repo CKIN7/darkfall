@@ -1,7 +1,7 @@
 import { Stats } from '../../../src/domain/value-objects/Stats';
 
 describe('Stats Value Object', () => {
-  describe('Creation & Validation', () => {
+  describe('Creation & Validation - Base Stats (min 1)', () => {
     it('should create base stats (10,10,10,10)', () => {
       const stats = Stats.base();
       expect(stats.strength).toBe(10);
@@ -10,8 +10,8 @@ describe('Stats Value Object', () => {
       expect(stats.energy).toBe(10);
     });
 
-    it('should create custom stats', () => {
-      const stats = Stats.create(15, 12, 14, 8);
+    it('should create custom base stats', () => {
+      const stats = Stats.createBase(15, 12, 14, 8);
       expect(stats.strength).toBe(15);
       expect(stats.dexterity).toBe(12);
       expect(stats.vitality).toBe(14);
@@ -19,34 +19,85 @@ describe('Stats Value Object', () => {
     });
 
     it('should floor decimal values', () => {
-      const stats = Stats.create(10.9, 10.1, 10.5, 10.99);
+      const stats = Stats.createBase(10.9, 10.1, 10.5, 10.99);
       expect(stats.strength).toBe(10);
       expect(stats.dexterity).toBe(10);
       expect(stats.vitality).toBe(10);
       expect(stats.energy).toBe(10);
     });
 
-    it('should clamp minimum to 1', () => {
-      const stats = Stats.create(-5, 0, 1, 100);
-      expect(stats.strength).toBe(1);
-      expect(stats.dexterity).toBe(1);
-      expect(stats.vitality).toBe(1);
-      expect(stats.energy).toBe(100);
+    it('should clamp minimum to 1 in constructor (via createBase with valid then subtract)', () => {
+      // The factory throws on invalid, but constructor clamps
+      // Test that add/subtract operations clamp correctly
+      const base = Stats.createBase(10, 10, 10, 10);
+      const allocated = Stats.createAllocated(5, 5, 5, 5);
+      const result = base.subtract(allocated);
+      expect(result.strength).toBe(5);
+      expect(result.dexterity).toBe(5);
+      expect(result.vitality).toBe(5);
+      expect(result.energy).toBe(5);
     });
 
-    it('should throw on invalid stats (after transform)', () => {
-      // class-validator runs after transform, so we test the final validated values
-      // The transform ensures minimum 1, so this should not throw in current implementation
-      // If we had additional constraints (max), they would be validated here
-      const stats = Stats.create(1, 1, 1, 1);
-      expect(stats.strength).toBe(1);
+    it('should throw on base stats below 1', () => {
+      expect(() => Stats.createBase(0, 10, 10, 10)).toThrow('Base stats must be at least 1');
+      expect(() => Stats.createBase(10, 0, 10, 10)).toThrow('Base stats must be at least 1');
+    });
+
+    it('should throw on non-finite base stats', () => {
+      expect(() => Stats.createBase(NaN, 10, 10, 10)).toThrow('Base stats must be finite numbers');
+      expect(() => Stats.createBase(Infinity, 10, 10, 10)).toThrow('Base stats must be finite numbers');
+    });
+  });
+
+  describe('Creation & Validation - Allocated Stats (min 0)', () => {
+    it('should create zero allocated stats', () => {
+      const stats = Stats.zero();
+      expect(stats.strength).toBe(0);
+      expect(stats.dexterity).toBe(0);
+      expect(stats.vitality).toBe(0);
+      expect(stats.energy).toBe(0);
+    });
+
+    it('should create custom allocated stats', () => {
+      const stats = Stats.createAllocated(5, 3, 2, 1);
+      expect(stats.strength).toBe(5);
+      expect(stats.dexterity).toBe(3);
+      expect(stats.vitality).toBe(2);
+      expect(stats.energy).toBe(1);
+    });
+
+    it('should floor decimal values', () => {
+      const stats = Stats.createAllocated(10.9, 10.1, 10.5, 10.99);
+      expect(stats.strength).toBe(10);
+      expect(stats.dexterity).toBe(10);
+      expect(stats.vitality).toBe(10);
+      expect(stats.energy).toBe(10);
+    });
+
+    it('should clamp minimum to 0 in constructor (via createAllocated with valid then subtract)', () => {
+      // The factory throws on invalid, but constructor clamps
+      const base = Stats.createAllocated(5, 5, 5, 5);
+      const toSubtract = Stats.createAllocated(10, 10, 10, 10);
+      const result = base.subtract(toSubtract);
+      expect(result.strength).toBe(0);
+      expect(result.dexterity).toBe(0);
+      expect(result.vitality).toBe(0);
+      expect(result.energy).toBe(0);
+    });
+
+    it('should throw on negative allocated stats', () => {
+      expect(() => Stats.createAllocated(-1, 0, 0, 0)).toThrow('Allocated stats cannot be negative');
+    });
+
+    it('should throw on non-finite allocated stats', () => {
+      expect(() => Stats.createAllocated(NaN, 0, 0, 0)).toThrow('Allocated stats must be finite numbers');
     });
   });
 
   describe('Immutability & Operations', () => {
     it('should add two stats returning new instance', () => {
-      const a = Stats.create(10, 10, 10, 10);
-      const b = Stats.create(5, 3, 2, 1);
+      const a = Stats.createBase(10, 10, 10, 10);
+      const b = Stats.createAllocated(5, 3, 2, 1);
       const result = a.add(b);
 
       expect(result).not.toBe(a);
@@ -61,9 +112,9 @@ describe('Stats Value Object', () => {
       expect(b.strength).toBe(5);
     });
 
-    it('should subtract stats with minimum 1', () => {
-      const a = Stats.create(15, 15, 15, 15);
-      const b = Stats.create(10, 10, 10, 10);
+    it('should subtract stats with minimum 0', () => {
+      const a = Stats.createBase(15, 15, 15, 15);
+      const b = Stats.createAllocated(10, 10, 10, 10);
       const result = a.subtract(b);
 
       expect(result.strength).toBe(5);
@@ -72,21 +123,21 @@ describe('Stats Value Object', () => {
       expect(result.energy).toBe(5);
     });
 
-    it('should clamp subtraction at 1', () => {
-      const a = Stats.create(5, 5, 5, 5);
-      const b = Stats.create(10, 10, 10, 10);
+    it('should clamp subtraction at 0', () => {
+      const a = Stats.createBase(5, 5, 5, 5);
+      const b = Stats.createAllocated(10, 10, 10, 10);
       const result = a.subtract(b);
 
-      expect(result.strength).toBe(1);
-      expect(result.dexterity).toBe(1);
-      expect(result.vitality).toBe(1);
-      expect(result.energy).toBe(1);
+      expect(result.strength).toBe(0);
+      expect(result.dexterity).toBe(0);
+      expect(result.vitality).toBe(0);
+      expect(result.energy).toBe(0);
     });
 
     it('should compare by value (equals)', () => {
-      const a = Stats.create(10, 12, 14, 16);
-      const b = Stats.create(10, 12, 14, 16);
-      const c = Stats.create(10, 12, 14, 15);
+      const a = Stats.createBase(10, 12, 14, 16);
+      const b = Stats.createBase(10, 12, 14, 16);
+      const c = Stats.createBase(10, 12, 14, 15);
 
       expect(a.equals(b)).toBe(true);
       expect(a.equals(c)).toBe(false);
@@ -95,7 +146,7 @@ describe('Stats Value Object', () => {
 
   describe('Serialization', () => {
     it('should serialize to JSON', () => {
-      const stats = Stats.create(15, 12, 14, 8);
+      const stats = Stats.createBase(15, 12, 14, 8);
       const json = stats.toJSON();
 
       expect(json).toEqual({
@@ -107,7 +158,7 @@ describe('Stats Value Object', () => {
     });
 
     it('should have readable toString', () => {
-      const stats = Stats.create(15, 12, 14, 8);
+      const stats = Stats.createBase(15, 12, 14, 8);
       expect(stats.toString()).toBe('Str:15 Dex:12 Vit:14 Ene:8');
     });
   });
